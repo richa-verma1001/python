@@ -17,22 +17,31 @@ if not file_path:
     exit()
 
 # -------- CONFIG --------
-email_column = "Primary Email"  # updated column name
+email_column = "Primary Email"
 office_column = "Office"
 
 # -------- READ EXCEL --------
 df = pd.read_excel(file_path)
-df.columns = df.columns.str.strip()  # remove leading/trailing spaces
+df.columns = df.columns.str.strip()
 
-# -------- VALIDATE COLUMNS --------
-missing_cols = [col for col in [email_column, office_column] if col not in df.columns]
+# -------- CASE-INSENSITIVE COLUMN MATCH --------
+lower_cols = {col.lower(): col for col in df.columns}
+required_cols = [email_column.lower(), office_column.lower()]
+missing_cols = [col for col in required_cols if col not in lower_cols]
+
 if missing_cols:
     print(f"Error: Missing required column(s): {', '.join(missing_cols)}")
     exit()
 
-# -------- FILTER --------
-filtered_df = df[df[email_column].str.contains("@gil-bar.com", na=False) |
-                 df[office_column].str.contains("GBI", na=False)]
+# Map original case column names
+email_col_actual = lower_cols[email_column.lower()]
+office_col_actual = lower_cols[office_column.lower()]
+
+# -------- FILTER (CASE-INSENSITIVE CONTENT MATCH) --------
+filtered_df = df[
+    df[email_col_actual].astype(str).str.lower().str.contains("@gil-bar.com", na=False) |
+    df[office_col_actual].astype(str).str.lower().str.contains("gbi", na=False)
+]
 
 # -------- WRITE TO NEW FILE --------
 base, ext = os.path.splitext(file_path)
