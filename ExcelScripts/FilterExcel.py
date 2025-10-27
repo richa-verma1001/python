@@ -22,22 +22,22 @@ office_column = "Office"
 
 # -------- READ EXCEL --------
 df = pd.read_excel(file_path)
-df.columns = df.columns.str.strip()
+df.columns = df.columns.str.strip()  # remove spaces
 
-# -------- CASE-INSENSITIVE COLUMN MATCH --------
+# Convert columns to lowercase for case-insensitive matching
 lower_cols = {col.lower(): col for col in df.columns}
-required_cols = [email_column.lower(), office_column.lower()]
-missing_cols = [col for col in required_cols if col not in lower_cols]
 
+# -------- VALIDATE COLUMNS (case-insensitive) --------
+missing_cols = [col for col in [email_column.lower(), office_column.lower()] if col not in lower_cols]
 if missing_cols:
     print(f"Error: Missing required column(s): {', '.join(missing_cols)}")
     exit()
 
-# Map original case column names
+# Map actual column names
 email_col_actual = lower_cols[email_column.lower()]
 office_col_actual = lower_cols[office_column.lower()]
 
-# -------- FILTER (CASE-INSENSITIVE CONTENT MATCH) --------
+# -------- FILTER (case-insensitive) --------
 filtered_df = df[
     df[email_col_actual].astype(str).str.lower().str.contains("@gil-bar.com", na=False) |
     df[office_col_actual].astype(str).str.lower().str.contains("gbi", na=False)
@@ -48,6 +48,9 @@ base, ext = os.path.splitext(file_path)
 timestamp = datetime.now().strftime("%Y%m%d_%H%M")
 new_file_path = f"{base}_filtered_{timestamp}{ext}"
 
-filtered_df.to_excel(new_file_path, sheet_name="Filtered", index=False)
+# Write both sheets — original + filtered
+with pd.ExcelWriter(new_file_path, engine="openpyxl") as writer:
+    df.to_excel(writer, sheet_name="Original Data", index=False)
+    filtered_df.to_excel(writer, sheet_name="Filtered - GBI", index=False)
 
-print(f"Filtered data written to new file: {new_file_path}")
+print(f"✅ Original and filtered data written to new file: {new_file_path}")
