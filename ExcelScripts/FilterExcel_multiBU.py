@@ -1,0 +1,189 @@
+import pandas as pd
+from datetime import datetime
+import tkinter as tk
+from tkinter import filedialog, messagebox
+import os
+import re
+
+# -------- HARD-CODED FILTER DEFINITIONS --------
+# Each key becomes an output sheet; each value is a list of (email/office) pairs.
+# A row is included in a sheet if it matches ANY pair in that sheet.
+FILTER_DEFINITIONS = {
+    # EXAMPLES — edit freely:
+    "GBI Offices": [
+        {"email": "gil-bar", "office": "105"},
+    ],
+    "McCoy Offices": [
+        {"email": "mccoy", "office": "662"},
+        #{"email": "mccoy", "office": "818"}
+    ],
+    "APA Offices": [
+        {"email": "apa-conn", "office": "355"},
+    ],
+    "HCNYE Offices": [
+        {"email": "hcnye", "office": "405"},
+    ],
+    "Airtech Offices": [
+        {"email": "airtech", "office": "691"},
+    ],
+    "GBS Offices": [
+        {"email": "mccoy", "office": "815"},
+    ],
+    "Ginns Offices": [
+        {"email": "sginns", "office": "805"},
+    ],
+    "DMG Offices": [
+        {"email": "dmg", "office": "820"},
+    ],
+    "DynamicFan Offices": [
+        {"email": "dynamic", "office": "210"},
+    ],
+    "NSG Offices": [
+        {"email": "nevada", "office": "670"},
+    ]
+}
+
+def sanitize_sheet_name(name: str) -> str:
+    """
+    Sanitize a string to be a valid Excel sheet name:
+    - Max 31 characters
+    - No: : \ / ? * [ ]
+    - No leading/trailing apostrophes
+    - Replace disallowed chars with spaces and collapse whitespace
+    """
+    if name is None:
+        name = ""
+    name = re.sub(r'[:\\/?*\[\]]', ' ', str(name))
+    name = re.sub(r'\s+', ' ', name).strip()
+    name = name.strip("'")
+    return name[:31] if name else ""
+
+def style_worksheet(ws):
+    from openpyxl.utils import get_column_letter
+    from openpyxl.styles import Font, PatternFill
+
+    header_font = Font(bold=True, color="FFFFFF")          # white text
+    header_fill = PatternFill("solid", fgColor="156082")   # dark blue background
+    stripe1 = PatternFill("solid", fgColor="C0E6F5")       # even rows
+    stripe2 = PatternFill("solid", fgColor="FFFFFF")       # odd rows
+
+    # Hide columns A–C
+    #for col in ["A", "B", "C"]:
+     #   ws.column_dimensions[col].hidden = True
+
+    # Set all column widths to 28
+    for col_idx in range(1, ws.max_column + 1):
+        col_letter = get_column_letter(col_idx)
+        ws.column_dimensions[col_letter].width = 28
+
+    # Header formatting
+    if ws.max_row >= 1:
+        for cell in ws[1]:
+            cell.font = header_font
+            cell.fill = header_fill
+
+    # Zebra striping for data rows (rows 2..max_row)
+    for r in range(2, ws.max_row + 1):
+        fill = stripe1 if (r % 2 == 0) else stripe2
+        for c in range(1, ws.max_column + 1):
+            ws.cell(row=r, column=c).fill = fill
+
+def main():
+    # -------- FILE SELECTION DIALOG --------
+    root = tk.Tk()
+    root.withdraw()
+    file_path = filedialog.askopenfilename(
+        title="Select Excel file",
+        filetypes=[("Excel files", "*.xlsx *.xls")]
+    )
+    if not file_path:
+        print("No file selected. Exiting.")
+        return
+
+    # -------- CONFIG (required columns) --------
+    email_column = "Primary Email"
+    office_column = "Office"
+
+    # -------- READ EXCEL --------
+    try:
+        df = pd.read_excel(file_path)
+    except Exception as e:
+        messagebox.showerror("Read Error", f"Failed to read Excel file:\n{e}")
+        return
+
+    # Normalize columns and map case-insensitively
+    df.columns = df.columns.str.strip()
+    lower_cols = {col.lower(): col for col in df.columns}
+
+    # -------- VALIDATE COLUMNS --------
+    required = [email_column.lower(), office_column.lower()]
+    missing_cols = [col for col in required if col not in lower_cols]
+    if missing_cols:
+        messagebox.showerror("Missing Columns",
+                             f"Error: Missing required column(s): {', '.join(missing_cols)}")
+        return
+
+    email_col_actual = lower_cols[email_column.lower()]
+    office_col_actual = lower_cols[office_column.lower()]
+
+    # -------- PROCESS FILTERS (HARD-CODED) --------
+    base, ext = os.path.splitext(file_path)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M")
+    new_file_path = f"{base}_filtered_{timestamp}{ext}"
+
+    try:
+        with pd.ExcelWriter(new_file_path, engine="openpyxl") as writer:
+            # Original sheet
+            df.to_excel(writer, sheet_name="Original Data", index=False)
+
+            used_sheet_names = {"Original Data"}
+
+            for raw_sheet_label, pairs in FILTER_DEFINITIONS.items():
+                # Build a combined mask across ALL pairs for this sheet
+                combined_mask = pd.Series(False, index=df.index)
+
+                if not isinstance(pairs, (list, tuple)):
+                    pairs = []
+
+                for pair in pairs:
+                    email_match = (pair.get("email") or "").strip()
+                    office_match = (pair.get("office") or "").strip()
+
+                    # Skip empty pair
+                    if not email_match and not office_match:
+                        continue
+
+                    pair_mask = pd.Series(False, index=df.index)
+                    if email_match:
+                        pair_mask = pair_mask | df[email_col_actual].astype(str).str.lower().str.contains(email_match.lower(), na=False)
+                    if office_match:
+                        pair_mask = pair_mask | df[office_col_actual].astype(str).str.lower().str.contains(office_match.lower(), na=False)
+
+                    combined_mask = combined_mask | pair_mask
+
+                filtered_df = df[combined_mask].copy()
+
+                # Determine safe + unique sheet name
+                base_name = sanitize_sheet_name(raw_sheet_label) or "Filtered"
+                sheet_name = base_name
+                suffix = 2
+                while not sheet_name or sheet_name in used_sheet_names:
+                    sheet_name = f"{base_name} ({suffix})"
+                    suffix += 1
+                used_sheet_names.add(sheet_name)
+
+                # Write (even if empty → headers only)
+                filtered_df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+            # Apply styling to all sheets
+            wb = writer.book
+            for name in used_sheet_names:
+                ws = wb[name]
+                style_worksheet(ws)
+
+        print(f"✅ Original and {len(FILTER_DEFINITIONS)} filtered sheet(s) written to new file:\n{new_file_path}")
+    except Exception as e:
+        messagebox.showerror("Write Error", f"Failed to write Excel file:\n{e}")
+
+if __name__ == "__main__":
+    main()
