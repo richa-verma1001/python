@@ -35,8 +35,8 @@ def style_worksheet(ws):
     stripe2 = PatternFill("solid", fgColor="FFFFFF")  # odd rows
 
     # Hide columns A–C
-    for col in ["A", "B", "C"]:
-        ws.column_dimensions[col].hidden = True
+    #for col in ["A", "B", "C"]:
+     #   ws.column_dimensions[col].hidden = True
 
     # Set all column widths to 28
     for col_idx in range(1, ws.max_column + 1):

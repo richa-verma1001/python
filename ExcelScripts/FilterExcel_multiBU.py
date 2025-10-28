@@ -5,9 +5,13 @@ from tkinter import filedialog, messagebox
 import os
 import re
 
+# -------- CONFIG: EXTRA "REMAINDER" OUTPUT --------
+CREATE_REMAINDER_SHEET = True
+REMAINDER_SHEET_NAME = "Remaining (Unmatched)"
+
 # -------- HARD-CODED FILTER DEFINITIONS --------
 # Each key becomes an output sheet; each value is a list of (email/office) pairs.
-# A row is included in a sheet if it matches ANY pair in that sheet.
+# A row is included in a sheet if it matches ANY pair in that sheet (OR across pairs).
 FILTER_DEFINITIONS = {
     # EXAMPLES — edit freely:
     "GBI Offices": [
@@ -27,10 +31,10 @@ FILTER_DEFINITIONS = {
         {"email": "airtech", "office": "691"},
     ],
     "GBS Offices": [
-        {"email": "mccoy", "office": "815"},
+        {"email": "gbs", "office": "815"},
     ],
     "Ginns Offices": [
-        {"email": "sginns", "office": "805"},
+        {"email": "sjginns", "office": "805"},
     ],
     "DMG Offices": [
         {"email": "dmg", "office": "820"},
@@ -38,8 +42,17 @@ FILTER_DEFINITIONS = {
     "DynamicFan Offices": [
         {"email": "dynamic", "office": "210"},
     ],
+    "JB Offices": [
+        {"email": "jbarrow", "office": ""},
+    ],
     "NSG Offices": [
-        {"email": "nevada", "office": "670"},
+        {"email": "nevada", "office": ""},
+    ],
+    "APAV Offices": [
+        {"email": "apav", "office": "670"},
+    ],
+    "Ambient Offices": [
+        {"email": "ambient-enterprises", "office": ""},
     ]
 }
 
@@ -138,8 +151,11 @@ def main():
 
             used_sheet_names = {"Original Data"}
 
+            # Track rows matched by ANY filter across ALL sheets
+            global_matched_mask = pd.Series(False, index=df.index)
+
+            # Create filtered sheets per definition
             for raw_sheet_label, pairs in FILTER_DEFINITIONS.items():
-                # Build a combined mask across ALL pairs for this sheet
                 combined_mask = pd.Series(False, index=df.index)
 
                 if not isinstance(pairs, (list, tuple)):
@@ -161,6 +177,9 @@ def main():
 
                     combined_mask = combined_mask | pair_mask
 
+                # Update global union
+                global_matched_mask = global_matched_mask | combined_mask
+
                 filtered_df = df[combined_mask].copy()
 
                 # Determine safe + unique sheet name
@@ -175,13 +194,27 @@ def main():
                 # Write (even if empty → headers only)
                 filtered_df.to_excel(writer, sheet_name=sheet_name, index=False)
 
-            # Apply styling to all sheets
+            # -------- REMAINDER SHEET --------
+            if CREATE_REMAINDER_SHEET:
+                remainder_df = df[~global_matched_mask].copy()
+
+                base_name = sanitize_sheet_name(REMAINDER_SHEET_NAME) or "Remaining/Unmatched"
+                sheet_name = base_name
+                suffix = 2
+                while not sheet_name or sheet_name in used_sheet_names:
+                    sheet_name = f"{base_name} ({suffix})"
+                    suffix += 1
+                used_sheet_names.add(sheet_name)
+
+                remainder_df.to_excel(writer, sheet_name=sheet_name, index=False)
+
+            # -------- STYLE ALL SHEETS --------
             wb = writer.book
             for name in used_sheet_names:
                 ws = wb[name]
                 style_worksheet(ws)
 
-        print(f"✅ Original and {len(FILTER_DEFINITIONS)} filtered sheet(s) written to new file:\n{new_file_path}")
+        print(f"✅ Original, {len(FILTER_DEFINITIONS)} filtered sheet(s){' + remainder' if CREATE_REMAINDER_SHEET else ''} written to:\n{new_file_path}")
     except Exception as e:
         messagebox.showerror("Write Error", f"Failed to write Excel file:\n{e}")
 
