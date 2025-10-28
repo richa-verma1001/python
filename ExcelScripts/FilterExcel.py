@@ -1,7 +1,7 @@
 import pandas as pd
 from datetime import datetime
 import tkinter as tk
-from tkinter import filedialog
+from tkinter import filedialog, simpledialog
 import os
 
 # -------- FILE SELECTION DIALOG --------
@@ -36,11 +36,13 @@ if missing_cols:
 # Map actual column names
 email_col_actual = lower_cols[email_column.lower()]
 office_col_actual = lower_cols[office_column.lower()]
+email_match = simpledialog.askstring("Primary Email Key", "Enter the email match")
+office_match = simpledialog.askstring("Office Key", "Enter the office match")
 
 # -------- FILTER (case-insensitive) --------
 filtered_df = df[
-    df[email_col_actual].astype(str).str.lower().str.contains("@gil-bar.com", na=False) |
-    df[office_col_actual].astype(str).str.lower().str.contains("gbi", na=False)
+    df[email_col_actual].astype(str).str.lower().str.contains(email_match, na=False) |
+    df[office_col_actual].astype(str).str.lower().str.contains(office_match, na=False)
 ]
 
 # -------- WRITE TO NEW FILE --------
@@ -51,6 +53,6 @@ new_file_path = f"{base}_filtered_{timestamp}{ext}"
 # Write both sheets — original + filtered
 with pd.ExcelWriter(new_file_path, engine="openpyxl") as writer:
     df.to_excel(writer, sheet_name="Original Data", index=False)
-    filtered_df.to_excel(writer, sheet_name="Filtered - GBI", index=False)
+    filtered_df.to_excel(writer, sheet_name="Filtered "+ office_match, index=False)
 
 print(f"✅ Original and filtered data written to new file: {new_file_path}")
