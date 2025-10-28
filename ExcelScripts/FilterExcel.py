@@ -50,9 +50,49 @@ base, ext = os.path.splitext(file_path)
 timestamp = datetime.now().strftime("%Y%m%d_%H%M")
 new_file_path = f"{base}_filtered_{timestamp}{ext}"
 
-# Write both sheets — original + filtered
+
+from openpyxl.utils import get_column_letter
+from openpyxl.styles import Font, PatternFill
+
 with pd.ExcelWriter(new_file_path, engine="openpyxl") as writer:
+    # Write both sheets
     df.to_excel(writer, sheet_name="Original Data", index=False)
-    filtered_df.to_excel(writer, sheet_name="Filtered "+ office_match, index=False)
+    filtered_df.to_excel(writer, sheet_name="Filtered " + office_match, index=False)
+
+    # Access workbook and worksheets
+    wb = writer.book
+    ws1 = writer.sheets["Original Data"]
+    ws2 = writer.sheets["Filtered " + office_match]
+
+    # Define header style
+    header_font = Font(bold=True, color="FFFFFF")  # white text
+    header_fill = PatternFill("solid", fgColor="156082")  # dark blue background
+    stripe1 = PatternFill("solid", fgColor="C0E6F5")         # even data rows
+    stripe2 = PatternFill("solid", fgColor="FFFFFF")         # odd data rows
+
+    # Apply header style to both sheets
+    for ws in [ws1, ws2]:
+        # Hide columns A–C
+        for col in ["A", "B", "C"]:
+            ws.column_dimensions[col].hidden = True
+
+        # Set all column widths to 28 
+    
+        for col_idx in range(1, ws.max_column + 1):
+            col_letter = get_column_letter(col_idx)
+            ws.column_dimensions[col_letter].width = 28
+
+        # Format header row (row 1)
+        for cell in ws[1]:
+            cell.font = header_font
+            cell.fill = header_fill
+
+        # Zebra striping for data rows (rows 2 .. max_row)
+        # Even-numbered rows -> #C0E6F5, odd-numbered rows -> #FFFFFF
+        for r in range(2, ws.max_row + 1):
+            fill = stripe1 if (r % 2 == 0) else stripe2
+            for c in range(1, ws.max_column + 1):
+                ws.cell(row=r, column=c).fill = fill
 
 print(f"✅ Original and filtered data written to new file: {new_file_path}")
+
