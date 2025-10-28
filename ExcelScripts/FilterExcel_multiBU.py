@@ -116,6 +116,7 @@ def main():
     # -------- CONFIG (required columns) --------
     email_column = "Primary Email"
     office_column = "Office"
+    name_column = "Name"  # used for duplicate detection on filter sheets
 
     # -------- READ EXCEL --------
     try:
@@ -128,7 +129,7 @@ def main():
     df.columns = df.columns.str.strip()
     lower_cols = {col.lower(): col for col in df.columns}
 
-    # -------- VALIDATE COLUMNS --------
+    # -------- VALIDATE COLUMNS (email + office required, name optional) --------
     required = [email_column.lower(), office_column.lower()]
     missing_cols = [col for col in required if col not in lower_cols]
     if missing_cols:
@@ -138,6 +139,8 @@ def main():
 
     email_col_actual = lower_cols[email_column.lower()]
     office_col_actual = lower_cols[office_column.lower()]
+    name_col_exists = name_column.lower() in lower_cols
+    name_col_actual = lower_cols.get(name_column.lower(), None)
 
     # -------- PROCESS FILTERS (HARD-CODED) --------
     base, ext = os.path.splitext(file_path)
@@ -153,6 +156,9 @@ def main():
 
             # Track rows matched by ANY filter across ALL sheets
             global_matched_mask = pd.Series(False, index=df.index)
+
+            # Track duplicate rows (by Excel row number) per filter sheet
+            duplicates_by_sheet = {}
 
             # Create filtered sheets per definition
             for raw_sheet_label, pairs in FILTER_DEFINITIONS.items():
@@ -194,11 +200,24 @@ def main():
                 # Write (even if empty → headers only)
                 filtered_df.to_excel(writer, sheet_name=sheet_name, index=False)
 
+                # ----- Duplicate detection by Name (case-insensitive) -----
+                if name_col_exists and not filtered_df.empty:
+                    # Map filtered_df columns case-insensitively to find the actual Name column in this df
+                    f_lower_cols = {c.lower(): c for c in filtered_df.columns}
+                    f_name_col = f_lower_cols.get(name_column.lower())
+                    if f_name_col:
+                        dup_mask = filtered_df[f_name_col].astype(str).str.lower().duplicated(keep=False)
+                        if dup_mask.any():
+                            # Excel rows are 1-based with header at row 1; data starts at row 2
+                            # dup_mask index is 0-based within filtered_df
+                            dup_rows_excel = (dup_mask[dup_mask].index.to_series().astype(int) + 2).tolist()
+                            duplicates_by_sheet[sheet_name] = dup_rows_excel
+
             # -------- REMAINDER SHEET --------
             if CREATE_REMAINDER_SHEET:
                 remainder_df = df[~global_matched_mask].copy()
 
-                base_name = sanitize_sheet_name(REMAINDER_SHEET_NAME) or "Remaining/Unmatched"
+                base_name = sanitize_sheet_name(REMAINDER_SHEET_NAME) or "Remaining"
                 sheet_name = base_name
                 suffix = 2
                 while not sheet_name or sheet_name in used_sheet_names:
@@ -207,14 +226,30 @@ def main():
                 used_sheet_names.add(sheet_name)
 
                 remainder_df.to_excel(writer, sheet_name=sheet_name, index=False)
+                # Intentionally not doing duplicate highlighting on remainder sheet per request
 
             # -------- STYLE ALL SHEETS --------
             wb = writer.book
+            from openpyxl.styles import PatternFill
+            highlight_fill = PatternFill("solid", fgColor="FFFF00")
+
             for name in used_sheet_names:
                 ws = wb[name]
                 style_worksheet(ws)
 
-        print(f"✅ Original, {len(FILTER_DEFINITIONS)} filtered sheet(s){' + remainder' if CREATE_REMAINDER_SHEET else ''} written to:\n{new_file_path}")
+                # After styling, apply duplicate highlighting for filter sheets only
+                if name in duplicates_by_sheet:
+                    for r in duplicates_by_sheet[name]:
+                        # Guard: ensure row exists
+                        if r <= ws.max_row:
+                            for c in range(1, ws.max_column + 1):
+                                ws.cell(row=r, column=c).fill = highlight_fill
+
+        print(
+            f"✅ Original, {len(FILTER_DEFINITIONS)} filtered sheet(s)"
+            f"{' + remainder' if CREATE_REMAINDER_SHEET else ''} written to:\n{new_file_path}\n"
+            f"🔍 Duplicate highlighting: " + (", ".join([f"{k}: {len(v)} row(s)" for k, v in duplicates_by_sheet.items()]) if duplicates_by_sheet else "none")
+        )
     except Exception as e:
         messagebox.showerror("Write Error", f"Failed to write Excel file:\n{e}")
 
