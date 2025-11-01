@@ -1,3 +1,14 @@
+# FilterExcel.py
+# This script filters an Excel file based on a primary email and office match.
+# Primary Email and Office match are input by the user. 
+# The script writes the original data and filtered data to new Excel files.
+# The script styles the Excel files with a dark blue header and zebra striping.
+# The script hides columns A, B, and C.
+# The script sets all column widths to 28.
+# The script formats the header row with a white text and dark blue background.
+# The script formats the data rows with a zebra striping pattern.
+
+
 import pandas as pd
 from datetime import datetime
 import tkinter as tk

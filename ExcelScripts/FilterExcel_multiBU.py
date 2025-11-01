@@ -1,9 +1,63 @@
+# FilterExcel_multiBU.py
+# This script filters an Excel file based on a primary email and office match.
+# Email and Office key/value pairs are hard-coded in the script.
+# The script writes the original data and filtered data to new Excel files.
+# The script styles the Excel files with a dark blue header and zebra striping.
+# The script also highlights duplicate rows in the filtered sheets.
+# The script also creates a remainder sheet for rows that do not match any filter.
+
 import pandas as pd
 from datetime import datetime
 import tkinter as tk
 from tkinter import filedialog, messagebox
 import os
 import re
+
+import unicodedata
+import string
+
+# --- Duplicate detection config ---
+NAME_COLUMNS = ["Name"]  # first existing (case-insensitive) will be used
+IGNORE_PUNCTUATION = True
+STRIP_DIACRITICS = True
+
+def normalize_name(value: str) -> str:
+    """
+    Normalize a name for robust duplicate detection:
+    - Unicode normalize (NFKC)
+    - Lowercase
+    - Trim outer whitespace
+    - Collapse internal whitespace to single spaces
+    - Optionally strip diacritics and punctuation
+    """
+    if value is None:
+        return ""
+    # cast to str, normalize unicode
+    s = unicodedata.normalize("NFKC", str(value))
+    # lowercase
+    s = s.lower()
+    # strip outer whitespace
+    s = s.strip()
+    # collapse internal whitespace
+    s = " ".join(s.split())
+
+    if STRIP_DIACRITICS:
+        # remove combining marks
+        s = "".join(
+            ch for ch in unicodedata.normalize("NFD", s)
+            if unicodedata.category(ch) != "Mn"
+        )
+        s = unicodedata.normalize("NFKC", s)
+
+    if IGNORE_PUNCTUATION:
+        table = str.maketrans("", "", string.punctuation)
+        s = s.translate(table)
+
+        # re-collapse just in case removing punctuation left extra spaces
+        s = " ".join(s.split())
+
+    return s
+
 
 # -------- CONFIG: EXTRA "REMAINDER" OUTPUT --------
 CREATE_REMAINDER_SHEET = True
@@ -14,44 +68,44 @@ REMAINDER_SHEET_NAME = "Remaining (Unmatched)"
 # A row is included in a sheet if it matches ANY pair in that sheet (OR across pairs).
 FILTER_DEFINITIONS = {
     # EXAMPLES — edit freely:
-    "GBI Offices": [
+    "GBI": [
         {"email": "gil-bar", "office": "105"},
     ],
-    "McCoy Offices": [
+    "McCoy": [
         {"email": "mccoy", "office": "662"},
-        #{"email": "mccoy", "office": "818"}
+        {"email": "mccoy", "office": "818"}
     ],
-    "APA Offices": [
+    "APA": [
         {"email": "apa-conn", "office": "355"},
     ],
-    "HCNYE Offices": [
+    "HCNYE": [
         {"email": "hcnye", "office": "405"},
     ],
-    "Airtech Offices": [
+    "Airtech": [
         {"email": "airtech", "office": "691"},
     ],
-    "GBS Offices": [
+    "GBS": [
         {"email": "gbs", "office": "815"},
     ],
-    "Ginns Offices": [
+    "Ginns": [
         {"email": "sjginns", "office": "805"},
     ],
-    "DMG Offices": [
+    "DMG": [
         {"email": "dmg", "office": "820"},
     ],
-    "DynamicFan Offices": [
+    "DynamicFan": [
         {"email": "dynamic", "office": "210"},
     ],
-    "JB Offices": [
+    "JB": [
         {"email": "jbarrow", "office": ""},
     ],
-    "NSG Offices": [
+    "NSG ": [
         {"email": "nevada", "office": ""},
     ],
-    "APAV Offices": [
+    "APAV": [
         {"email": "apav", "office": "670"},
     ],
-    "Ambient Offices": [
+    "Ambient": [
         {"email": "ambient-enterprises", "office": ""},
     ]
 }
@@ -114,8 +168,8 @@ def main():
         return
 
     # -------- CONFIG (required columns) --------
-    email_column = "Primary Email"
-    office_column = "Office"
+    email_column = "Email"
+    office_column = "BU Code"
     name_column = "Name"  # used for duplicate detection on filter sheets
 
     # -------- READ EXCEL --------
@@ -200,18 +254,30 @@ def main():
                 # Write (even if empty → headers only)
                 filtered_df.to_excel(writer, sheet_name=sheet_name, index=False)
 
-                # ----- Duplicate detection by Name (case-insensitive) -----
-                if name_col_exists and not filtered_df.empty:
-                    # Map filtered_df columns case-insensitively to find the actual Name column in this df
+                # ----- Duplicate detection by Name (case-insensitive, normalized) -----
+                # Only for filter sheets; skip if no name-like column or no rows.
+                if not filtered_df.empty:
+                    # Find an actual name column in this sheet (case-insensitive)
                     f_lower_cols = {c.lower(): c for c in filtered_df.columns}
-                    f_name_col = f_lower_cols.get(name_column.lower())
-                    if f_name_col:
-                        dup_mask = filtered_df[f_name_col].astype(str).str.lower().duplicated(keep=False)
+                    name_candidate_actual = None
+                    for candidate in NAME_COLUMNS:
+                        actual = f_lower_cols.get(candidate.lower())
+                        if actual:
+                            name_candidate_actual = actual
+                            break
+
+                    if name_candidate_actual:
+                        # Build normalized keys
+                        name_series = filtered_df[name_candidate_actual].astype(str)
+                        key = name_series.apply(normalize_name)
+
+                        # Flag duplicates (ignore blanks)
+                        dup_mask = key.duplicated(keep=False) & (key != "")
                         if dup_mask.any():
-                            # Excel rows are 1-based with header at row 1; data starts at row 2
-                            # dup_mask index is 0-based within filtered_df
+                            # Convert to Excel row numbers (data starts at row 2)
                             dup_rows_excel = (dup_mask[dup_mask].index.to_series().astype(int) + 2).tolist()
                             duplicates_by_sheet[sheet_name] = dup_rows_excel
+
 
             # -------- REMAINDER SHEET --------
             if CREATE_REMAINDER_SHEET:

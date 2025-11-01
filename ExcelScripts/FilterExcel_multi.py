@@ -1,3 +1,12 @@
+# FilterExcel_multi.py
+# This script filters an Excel file based on a primary email and office match.
+# Email and Office key/value pairs are input by the user.
+# User can add multiple filters.
+# The script writes the original data and filtered data to new Excel files.
+# The script styles the Excel files with a dark blue header and zebra striping.
+# The script also highlights duplicate rows in the filtered sheets.
+# The script also creates a remainder sheet for rows that do not match any filter.
+
 import pandas as pd
 from datetime import datetime
 import tkinter as tk
