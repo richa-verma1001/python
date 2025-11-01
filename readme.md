@@ -24,7 +24,7 @@ We are going to create a virutal environment at parent folder level
     ````
 
     4. Reinstall dependencies 
-        pip install pandas openpyxl tkinter
+        pip install pandas openpyxl pyinstaller pdf2image python-docx Pillow
 
     5. Verify
         which python        # Mac/Linux
