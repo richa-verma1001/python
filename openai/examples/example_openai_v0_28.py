@@ -2,6 +2,7 @@
 # API call is openai.ChatCompletion.create(model, messages, temperature)
 # Note the openai version below needs openai version <1.0.0
 # python -m pip install "openai<1.0.0"  or pip install "openai<1.0.0" or pip install openai==0.28
+# this file uses openai version 0.28
 
 import openai
 from dotenv import load_dotenv

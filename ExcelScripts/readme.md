@@ -1,5 +1,7 @@
-python -m venv venv
-.\venv\Scripts\activate
+
+python -m venv venv    // Create
+.\venv\Scripts\activate   // Activate 
+deactivate   // deactivate
 pip install pandas openpyxl
 python FilterExcel.py
 
